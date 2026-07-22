@@ -63,7 +63,7 @@ def _plot_pass_rate_axis(ax, pass_rates, pass_counts, max_pos):
     ax.grid(True, alpha=0.3, linewidth=0.5)
 
 
-def _plot_optimal_path_axis(ax, optimal_path, max_pos):
+def _plot_optimal_path_axis(ax, optimal_path, max_pos, range_start=0, range_end=100):
     """在指定 Axes 上绘制最优路径交错条块图"""
     n_runs = len(optimal_path)
     cmap = plt.colormaps["tab20"]
@@ -83,8 +83,8 @@ def _plot_optimal_path_axis(ax, optimal_path, max_pos):
         ax.text((start + end) / 2, y, f"#{i+1}", ha="center", va="center",
                 fontsize=7.5, fontweight="bold", color="white", zorder=3)
 
-    ax.text(0, -0.55, "0%", ha="center", fontsize=9, fontweight="bold")
-    ax.text(max_pos, -0.55, "100%", ha="center", fontsize=9, fontweight="bold")
+    ax.text(range_start, -0.55, f"{range_start}%", ha="center", fontsize=9, fontweight="bold")
+    ax.text(range_end, -0.55, f"{range_end}%", ha="center", fontsize=9, fontweight="bold")
 
     seen = set()
     for _, end in optimal_path:
@@ -120,21 +120,26 @@ def plot_pass_rate(pass_rates, pass_counts, max_pos, output_path="pass_rate.png"
     print(f"  Pass rate chart saved: {output_path}")
 
 
-def plot_optimal_path(optimal_path, max_pos, output_path="optimal_path.png"):
+def plot_optimal_path(optimal_path, max_pos, output_path="optimal_path.png",
+                      range_start=0, range_end=100):
     """单独的最优路径交错条块图"""
     if not HAS_MATPLOTLIB or not optimal_path:
         return
     fig, ax = plt.subplots(figsize=(14, 3))
-    _plot_optimal_path_axis(ax, optimal_path, max_pos)
-    ax.set_title("Optimal Path: Minimum Runs to Complete (0%→100%)",
-                  fontsize=13, fontweight="bold")
+    _plot_optimal_path_axis(ax, optimal_path, max_pos, range_start, range_end)
+    if range_start == 0 and range_end == 100:
+        title = "Optimal Path: Minimum Runs to Complete (0%→100%)"
+    else:
+        title = f"Longest Segment: {range_start}%→{range_end}%"
+    ax.set_title(title, fontsize=13, fontweight="bold")
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  Optimal path chart saved: {output_path}")
 
 
 def plot_combined(pass_rates, pass_counts, max_pos, optimal_path=None,
-                  output_path="pass_combined.png"):
+                  output_path="pass_combined.png",
+                  range_start=0, range_end=100):
     """组合图: 上半部通过率双轴, 下半部最优路径"""
     if not HAS_MATPLOTLIB:
         print("  [提示] 未安装 matplotlib，跳过图表生成。")
@@ -157,9 +162,12 @@ def plot_combined(pass_rates, pass_counts, max_pos, optimal_path=None,
 
     if has_path:
         ax3 = fig.add_subplot(gs[1], sharex=ax1)
-        _plot_optimal_path_axis(ax3, optimal_path, max_pos)
-        ax3.set_title("Optimal Path: Minimum Runs to Complete (0%→100%)",
-                      fontsize=13, fontweight="bold")
+        _plot_optimal_path_axis(ax3, optimal_path, max_pos, range_start, range_end)
+        if range_start == 0 and range_end == 100:
+            path_title = "Optimal Path: Minimum Runs to Complete (0%→100%)"
+        else:
+            path_title = f"Longest Segment: {range_start}%→{range_end}%"
+        ax3.set_title(path_title, fontsize=13, fontweight="bold")
 
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)

@@ -52,7 +52,12 @@ def _build_furthest_from(runs):
 
 
 def _find_optimal_path(furthest_from, max_pos):
-    """DP 求从 0 到 max_pos 的最少 runs 路径"""
+    """DP 求从 0 到 max_pos 的最少 runs 路径
+
+    若找不到完整路径，则找 session 中覆盖范围最广的一段区间
+    (最早 start → 最远 end)，并在该区间内求最少 runs 拼接。
+    返回 (min_runs, path, range_start, range_end, is_full)。
+    """
     INF = 9999
     dp = {max_pos: 0}
     next_pos = {}
@@ -72,18 +77,58 @@ def _find_optimal_path(furthest_from, max_pos):
             dp[pos] = best
             next_pos[pos] = best_next
 
-    # 回溯
-    optimal_path = []
+    # 回溯完整 0→100 路径
     if 0 in next_pos:
+        path = []
         pos = 0
         while pos < max_pos:
             nxt = next_pos[pos]
             for start in range(0, pos + 1):
                 if start in furthest_from and furthest_from[start] >= nxt:
-                    optimal_path.append((start, furthest_from[start]))
+                    path.append((start, furthest_from[start]))
                     break
             pos = nxt
-    return dp.get(0), optimal_path
+        return dp.get(0), path, 0, max_pos, True
+
+    # 回退: 找覆盖最广的区间
+    if not furthest_from:
+        return None, [], 0, 0, False
+
+    min_start = min(furthest_from.keys())
+    max_end = max(furthest_from.values())
+
+    # 在该区间内重新做 DP
+    dp_seg = {max_end: 0}
+    next_seg = {}
+    for pos in range(max_end - 1, min_start - 1, -1):
+        best = INF
+        best_next = None
+        for start in range(min_start, pos + 1):
+            if start in furthest_from:
+                end = furthest_from[start]
+                if end > pos and end <= max_end and end in dp_seg:
+                    candidate = 1 + dp_seg[end]
+                    if candidate < best:
+                        best = candidate
+                        best_next = end
+        if best < INF:
+            dp_seg[pos] = best
+            next_seg[pos] = best_next
+
+    path = []
+    if min_start in next_seg:
+        pos = min_start
+        while pos < max_end:
+            nxt = next_seg[pos]
+            for start in range(min_start, pos + 1):
+                if start in furthest_from and furthest_from[start] >= nxt:
+                    path.append((start, furthest_from[start]))
+                    break
+            pos = nxt
+        return dp_seg.get(min_start), path, min_start, max_end, False
+
+    # 极端回退: 只有一段
+    return None, [(min_start, max_end)], min_start, max_end, False
 
 
 def _compute_pass_rates(runs, max_pos):
@@ -149,7 +194,7 @@ def analyze(data, max_pos=100):
     death_map = _build_death_map(deaths_raw, runs)
     total_deaths = sum(death_map.values())
     furthest_from = _build_furthest_from(runs)
-    min_runs, optimal_path = _find_optimal_path(furthest_from, max_pos)
+    min_runs, optimal_path, range_start, range_end, is_full_path = _find_optimal_path(furthest_from, max_pos)
     pass_rates, pass_counts = _compute_pass_rates(runs, max_pos)
     segment_deaths = _compute_segment_deaths(death_map)
     top_chokes = sorted(death_map.items(), key=lambda x: -x[1])[:20]
@@ -169,6 +214,9 @@ def analyze(data, max_pos=100):
         "total_deaths": total_deaths,
         "min_runs": min_runs,
         "optimal_path": optimal_path,
+        "range_start": range_start,
+        "range_end": range_end,
+        "is_full_path": is_full_path,
         "furthest_from": dict(sorted(furthest_from.items())),
         "segment_deaths": segment_deaths,
         "pass_rates": pass_rates,
@@ -201,7 +249,10 @@ def print_report(result):
 
     # ── 最少 runs 拼接 ──
     print("─" * 56)
-    print(f"  最少 runs 拼接通关: {r['min_runs']} 次 run")
+    if r['is_full_path']:
+        print(f"  最少 runs 拼接通关: {r['min_runs']} 次 run (0%→100%)")
+    else:
+        print(f"  区间 {r['range_start']}%→{r['range_end']}% 最少 runs: {r['min_runs']} 次")
     print("─" * 56)
     if r['optimal_path']:
         for i, (s, e) in enumerate(r['optimal_path']):
