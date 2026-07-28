@@ -60,7 +60,12 @@ def _plot_pass_rate_axis(ax, pass_rates, pass_counts, max_pos):
     lines1, labels1 = ax.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax.legend(lines1 + lines2, labels1 + labels2, fontsize=9, loc="lower left")
+
+    # 每 20% 主刻度，每 5% 次刻度网格线
+    ax.set_xticks(range(0, max_pos + 1, 20))
+    ax.set_xticks(range(0, max_pos + 1, 5), minor=True)
     ax.grid(True, alpha=0.3, linewidth=0.5)
+    ax.grid(True, which="minor", alpha=0.1, linewidth=0.3)
 
 
 def _plot_optimal_path_axis(ax, optimal_path, max_pos, range_start=0, range_end=100):
@@ -101,7 +106,11 @@ def _plot_optimal_path_axis(ax, optimal_path, max_pos, range_start=0, range_end=
     ax.set_yticks([])
     ax.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.35),
               ncol=min(n_runs, 7), framealpha=0.8)
-    ax.grid(False)
+    # 每 20% 主刻度，每 5% 次刻度网格线
+    ax.set_xticks(range(0, max_pos + 1, 20))
+    ax.set_xticks(range(0, max_pos + 1, 5), minor=True)
+    ax.grid(True, alpha=0.15, linewidth=0.4)
+    ax.grid(True, which="minor", alpha=0.06, linewidth=0.2)
 
 
 # ── 顶层绘图入口 ──────────────────────────────────────────────
@@ -147,21 +156,22 @@ def plot_combined(pass_rates, pass_counts, max_pos, optimal_path=None,
         return
 
     has_path = bool(optimal_path)
-    fig = plt.figure(figsize=(14, 6.0 if has_path else 4.5))
+    fig = plt.figure(figsize=(14, 6.5 if has_path else 4.5))
     gs = fig.add_gridspec(
         2 if has_path else 1, 1,
         height_ratios=[3, 1.5] if has_path else [1],
-        hspace=0.1 if has_path else 0.3,
+        hspace=0.3 if has_path else 0.3,
     )
 
     ax1 = fig.add_subplot(gs[0])
     _plot_pass_rate_axis(ax1, pass_rates, pass_counts, max_pos)
-    ax1.set_xticklabels([])
     ax1.set_title("Pass Rate (L) & Pass Count (R) per 1% Position",
                   fontsize=13, fontweight="bold")
 
     if has_path:
-        ax3 = fig.add_subplot(gs[1], sharex=ax1)
+        ax3 = fig.add_subplot(gs[1])
+        # 对齐横轴范围
+        ax3.set_xlim(ax1.get_xlim())
         _plot_optimal_path_axis(ax3, optimal_path, max_pos, range_start, range_end)
         if range_start == 0 and range_end == 100:
             path_title = "Optimal Path: Minimum Runs to Complete (0%→100%)"
