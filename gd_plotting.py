@@ -4,6 +4,9 @@
 """
 
 import os
+from typing import Any, Optional
+
+from gd_analysis import OptimalPath, PassRates
 
 try:
     import matplotlib
@@ -16,7 +19,9 @@ except ImportError:
 
 # ── 底层绘制函数 ──────────────────────────────────────────────
 
-def _plot_pass_rate_axis(ax, pass_rates, pass_counts, max_pos):
+def _plot_pass_rate_axis(
+    ax: "plt.Axes", pass_rates: PassRates, pass_counts: list[int], max_pos: int
+) -> None:
     """在指定 Axes 上绘制通过率(左轴) + 通过次数(右轴)"""
     positions_rate = [x for x, _, _, r in pass_rates if r is not None]
     rates = [r for _, _, _, r in pass_rates if r is not None]
@@ -68,7 +73,10 @@ def _plot_pass_rate_axis(ax, pass_rates, pass_counts, max_pos):
     ax.grid(True, which="minor", alpha=0.1, linewidth=0.3)
 
 
-def _plot_optimal_path_axis(ax, optimal_path, max_pos, range_start=0, range_end=100):
+def _plot_optimal_path_axis(
+    ax: "plt.Axes", optimal_path: OptimalPath, max_pos: int,
+    range_start: int = 0, range_end: int = 100,
+) -> None:
     """在指定 Axes 上绘制最优路径交错条块图"""
     n_runs = len(optimal_path)
     cmap = plt.colormaps["tab20"]
@@ -115,7 +123,10 @@ def _plot_optimal_path_axis(ax, optimal_path, max_pos, range_start=0, range_end=
 
 # ── 顶层绘图入口 ──────────────────────────────────────────────
 
-def plot_pass_rate(pass_rates, pass_counts, max_pos, output_path="pass_rate.png"):
+def plot_pass_rate(
+    pass_rates: PassRates, pass_counts: list[int], max_pos: int,
+    output_path: str = "pass_rate.png",
+) -> None:
     """单独的通过率+通过次数双轴图"""
     if not HAS_MATPLOTLIB:
         return
@@ -129,8 +140,11 @@ def plot_pass_rate(pass_rates, pass_counts, max_pos, output_path="pass_rate.png"
     print(f"  Pass rate chart saved: {output_path}")
 
 
-def plot_optimal_path(optimal_path, max_pos, output_path="optimal_path.png",
-                      range_start=0, range_end=100):
+def plot_optimal_path(
+    optimal_path: OptimalPath, max_pos: int,
+    output_path: str = "optimal_path.png",
+    range_start: int = 0, range_end: int = 100,
+) -> None:
     """单独的最优路径交错条块图"""
     if not HAS_MATPLOTLIB or not optimal_path:
         return
@@ -146,9 +160,12 @@ def plot_optimal_path(optimal_path, max_pos, output_path="optimal_path.png",
     print(f"  Optimal path chart saved: {output_path}")
 
 
-def plot_combined(pass_rates, pass_counts, max_pos, optimal_path=None,
-                  output_path="pass_combined.png",
-                  range_start=0, range_end=100):
+def plot_combined(
+    pass_rates: PassRates, pass_counts: list[int], max_pos: int,
+    optimal_path: Optional[OptimalPath] = None,
+    output_path: str = "pass_combined.png",
+    range_start: int = 0, range_end: int = 100,
+) -> None:
     """组合图: 上半部通过率双轴, 下半部最优路径"""
     if not HAS_MATPLOTLIB:
         print("  [提示] 未安装 matplotlib，跳过图表生成。")

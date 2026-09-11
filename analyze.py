@@ -15,7 +15,7 @@ from gd_analysis import load_data, analyze, print_report
 from gd_plotting import plot_pass_rate, plot_optimal_path, plot_combined
 
 
-def _session_timestamp(path):
+def _session_timestamp(path: str) -> str:
     """从 session 文件路径解析时间戳字符串"""
     basename = os.path.splitext(os.path.basename(path))[0]
     try:
@@ -25,7 +25,7 @@ def _session_timestamp(path):
         return basename
 
 
-def process_file(path, out_dir="."):
+def process_file(path: str, out_dir: str = ".") -> None:
     """分析单个 .dt 文件并生成图表到 out_dir"""
     os.makedirs(out_dir, exist_ok=True)
 

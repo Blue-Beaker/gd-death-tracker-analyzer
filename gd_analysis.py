@@ -5,11 +5,21 @@
 
 import json
 from collections import defaultdict
+from typing import Any, Optional
+
+# 类型别名
+Runs = dict[str, int]              # "A-B" -> count
+Deaths = dict[str, int]            # "pos" -> count
+FurthestFrom = dict[int, int]      # start -> furthest end
+OptimalPath = list[tuple[int, int]]  # [(start, end), ...]
+PassRates = list[tuple[int, int, int, Optional[float]]]  # (pos, pass, fail, rate)
+SegmentDeaths = list[tuple[str, int]]  # (label, count)
+Result = dict[str, Any]
 
 
 # ── 加载数据 ──────────────────────────────────────────────────
 
-def load_data(path="general.dt"):
+def load_data(path: str = "general.dt") -> dict[str, Any]:
     with open(path) as f:
         raw = json.load(f)
     # session 文件的数据在 "data" 子对象中
@@ -20,7 +30,7 @@ def load_data(path="general.dt"):
 
 # ── 核心分析 ──────────────────────────────────────────────────
 
-def _merge_current_best(runs, current_best):
+def _merge_current_best(runs: Runs, current_best: int) -> Runs:
     """将 normal mode 的 currentBest 作为一条 0→best run 合并进去"""
     runs = dict(runs)
     if current_best > 0:
@@ -29,9 +39,9 @@ def _merge_current_best(runs, current_best):
     return runs
 
 
-def _build_death_map(deaths_raw, runs):
+def _build_death_map(deaths_raw: Deaths, runs: Runs) -> dict[int, int]:
     """合并 deaths 和 runs 中所有死亡数据"""
-    death_map = defaultdict(int)
+    death_map: dict[int, int] = defaultdict(int)
     for k, v in deaths_raw.items():
         death_map[int(k)] += v
     for k, v in runs.items():
@@ -40,9 +50,9 @@ def _build_death_map(deaths_raw, runs):
     return death_map
 
 
-def _build_furthest_from(runs):
+def _build_furthest_from(runs: Runs) -> FurthestFrom:
     """对每个起始位置，记录能到达的最远位置"""
-    furthest_from = {}
+    furthest_from: FurthestFrom = {}
     for k, v in runs.items():
         a, b = k.split("-")
         a, b = int(a), int(b)
@@ -51,7 +61,9 @@ def _build_furthest_from(runs):
     return furthest_from
 
 
-def _find_optimal_path(furthest_from, max_pos):
+def _find_optimal_path(
+    furthest_from: FurthestFrom, max_pos: int
+) -> tuple[Optional[int], OptimalPath, int, int, bool]:
     """DP 求从 0 到 max_pos 的最少 runs 路径
 
     若找不到完整路径，则找 session 中覆盖范围最广的一段区间
@@ -59,8 +71,8 @@ def _find_optimal_path(furthest_from, max_pos):
     返回 (min_runs, path, range_start, range_end, is_full)。
     """
     INF = 9999
-    dp = {max_pos: 0}
-    next_pos = {}
+    dp: dict[int, int] = {max_pos: 0}
+    next_pos: dict[int, Optional[int]] = {}
 
     for pos in range(max_pos - 1, -1, -1):
         best = INF
@@ -79,10 +91,12 @@ def _find_optimal_path(furthest_from, max_pos):
 
     # 回溯完整 0→100 路径
     if 0 in next_pos:
-        path = []
+        path: OptimalPath = []
         pos = 0
         while pos < max_pos:
             nxt = next_pos[pos]
+            if not nxt:
+                break
             for start in range(0, pos + 1):
                 if start in furthest_from and furthest_from[start] >= nxt:
                     path.append((start, furthest_from[start]))
@@ -98,8 +112,8 @@ def _find_optimal_path(furthest_from, max_pos):
     max_end = max(furthest_from.values())
 
     # 在该区间内重新做 DP
-    dp_seg = {max_end: 0}
-    next_seg = {}
+    dp_seg: dict[int, int] = {max_end: 0}
+    next_seg: dict[int, Optional[int]] = {}
     for pos in range(max_end - 1, min_start - 1, -1):
         best = INF
         best_next = None
@@ -120,6 +134,8 @@ def _find_optimal_path(furthest_from, max_pos):
         pos = min_start
         while pos < max_end:
             nxt = next_seg[pos]
+            if not nxt:
+                break
             for start in range(min_start, pos + 1):
                 if start in furthest_from and furthest_from[start] >= nxt:
                     path.append((start, furthest_from[start]))
@@ -131,7 +147,9 @@ def _find_optimal_path(furthest_from, max_pos):
     return None, [(min_start, max_end)], min_start, max_end, False
 
 
-def _compute_pass_rates(runs, max_pos):
+def _compute_pass_rates(
+    runs: Runs, max_pos: int
+) -> tuple[PassRates, list[int]]:
     """计算每 1% 的通过次数和通过率 (不含区段起点终点)"""
     pass_counts = [0] * (max_pos + 1)
     fail_counts = [0] * (max_pos + 1)
@@ -144,7 +162,7 @@ def _compute_pass_rates(runs, max_pos):
         if 1 <= b <= max_pos:
             fail_counts[b] += v
 
-    pass_rates = []
+    pass_rates: PassRates = []
     for x in range(1, max_pos + 1):
         total = pass_counts[x] + fail_counts[x]
         rate = pass_counts[x] / total if total > 0 else None
@@ -155,7 +173,7 @@ def _compute_pass_rates(runs, max_pos):
     return pass_rates, pass_counts
 
 
-def _compute_segment_deaths(death_map):
+def _compute_segment_deaths(death_map: dict[int, int]) -> SegmentDeaths:
     """按固定区段统计死亡数"""
     segments = [
         (0, 3, "0-3%   (开场)"),
@@ -175,7 +193,7 @@ def _compute_segment_deaths(death_map):
             for lo, hi, label in segments]
 
 
-def _format_time_ns(ns):
+def _format_time_ns(ns: int) -> str:
     s = ns / 1_000_000_000
     h = int(s // 3600)
     m = int((s % 3600) // 60)
@@ -183,7 +201,7 @@ def _format_time_ns(ns):
     return f"{h}h {m}m {sec:.0f}s"
 
 
-def analyze(data, max_pos=100):
+def analyze(data: dict[str, Any], max_pos: int = 100) -> Result:
     """主分析函数，返回包含所有统计结果的 dict"""
     runs = data.get("runs", {})
     deaths_raw = data.get("deaths", {})
@@ -232,7 +250,7 @@ def analyze(data, max_pos=100):
 
 # ── 格式化输出 ──────────────────────────────────────────────────
 
-def print_report(result):
+def print_report(result: Result) -> None:
     r = result
     print("=" * 56)
     print("  GD Death Tracker 数据分析报告")
