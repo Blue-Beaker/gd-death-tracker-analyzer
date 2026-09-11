@@ -8,13 +8,52 @@ from collections import defaultdict
 from typing import Any, Optional
 
 # 类型别名
-Runs = dict[str, int]              # "A-B" -> count
-Deaths = dict[str, int]            # "pos" -> count
+Runs = dict["Run", int]            # Run -> count
+Deaths = dict["Death", int]        # Death -> count
 FurthestFrom = dict[int, int]      # start -> furthest end
 OptimalPath = list[tuple[int, int]]  # [(start, end), ...]
 PassRates = list[tuple[int, int, int, Optional[float]]]  # (pos, pass, fail, rate)
 SegmentDeaths = list[tuple[str, int]]  # (label, count)
 Result = dict[str, Any]
+
+
+class Run:
+    """一次尝试: 从 start 出发，死在 end"""
+
+    start: int
+    end: int
+
+    def __init__(self, start: int, end: int) -> None:
+        self.start = start
+        self.end = end
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Run) and (self.start, self.end) == (other.start, other.end)
+
+    def __hash__(self) -> int:
+        # 每一对 (start, end) 都有唯一 hash
+        return (self.start << 16) | self.end
+
+    def __repr__(self) -> str:
+        return f"Run({self.start}, {self.end})"
+
+    @classmethod
+    def from_key(cls, key: str) -> "Run":
+        """从 'A-B' 字符串解析"""
+        a, b = key.split("-")
+        return cls(int(a), int(b))
+
+
+class Death(Run):
+    """一次死亡: 从 0 出发，死在 end"""
+
+    def __init__(self, end: int) -> None:
+        super().__init__(0, end)
+
+    @classmethod
+    def from_key(cls, key: str) -> "Death":
+        """从 'pos' 字符串解析"""
+        return cls(int(key))
 
 
 # ── 加载数据 ──────────────────────────────────────────────────
@@ -23,41 +62,48 @@ def load_data(path: str = "general.dt") -> dict[str, Any]:
     with open(path) as f:
         raw = json.load(f)
     # session 文件的数据在 "data" 子对象中
-    if "data" in raw:
-        return raw["data"]
-    return raw
+    data = raw["data"] if "data" in raw else raw
+
+    # 将 runs/deaths 的字符串键转换为 Run/Death 实例
+    if "runs" in data:
+        data["runs"] = {Run.from_key(k): v for k, v in data["runs"].items()}
+    if "deaths" in data:
+        data["deaths"] = {Death.from_key(k): v for k, v in data["deaths"].items()}
+    return data
 
 
 # ── 核心分析 ──────────────────────────────────────────────────
 
-def _merge_current_best(runs: Runs, current_best: int) -> Runs:
-    """将 normal mode 的 currentBest 作为一条 0→best run 合并进去"""
-    runs = dict(runs)
+def _merge_current_best(runs: Runs, deaths: Deaths, current_best: int) -> Runs:
+    """将所有 deaths 计数合并入 runs，并加入 normal mode 的 currentBest
+
+    Death(end) 等价于 Run(0, end)，因此可直接合并为同一起点的 run。
+    currentBest 作为一条 0→best run 加入。
+    """
+    merged = dict(runs)
+    for death, v in deaths.items():
+        key = Run(death.start, death.end)
+        merged[key] = merged.get(key, 0) + v
     if current_best > 0:
-        key = f"0-{current_best}"
-        runs[key] = runs.get(key, 0) + 1
-    return runs
+        key = Run(0, current_best)
+        merged[key] = merged.get(key, 0) + 1
+    return merged
 
 
-def _build_death_map(deaths_raw: Deaths, runs: Runs) -> dict[int, int]:
-    """合并 deaths 和 runs 中所有死亡数据"""
+def _build_death_map(runs: Runs) -> dict[int, int]:
+    """统计每个 end 位置的死亡次数 (deaths 已合并入 runs)"""
     death_map: dict[int, int] = defaultdict(int)
-    for k, v in deaths_raw.items():
-        death_map[int(k)] += v
-    for k, v in runs.items():
-        b = int(k.split("-")[1])
-        death_map[b] += v
+    for run, v in runs.items():
+        death_map[run.end] += v
     return death_map
 
 
 def _build_furthest_from(runs: Runs) -> FurthestFrom:
     """对每个起始位置，记录能到达的最远位置"""
     furthest_from: FurthestFrom = {}
-    for k, v in runs.items():
-        a, b = k.split("-")
-        a, b = int(a), int(b)
-        if a not in furthest_from or b > furthest_from[a]:
-            furthest_from[a] = b
+    for run in runs:
+        if run.start not in furthest_from or run.end > furthest_from[run.start]:
+            furthest_from[run.start] = run.end
     return furthest_from
 
 
@@ -153,9 +199,8 @@ def _compute_pass_rates(
     """计算每 1% 的通过次数和通过率 (不含区段起点终点)"""
     pass_counts = [0] * (max_pos + 1)
     fail_counts = [0] * (max_pos + 1)
-    for k, v in runs.items():
-        a, b = k.split("-")
-        a, b = int(a), int(b)
+    for run, v in runs.items():
+        a, b = run.start, run.end
         for x in range(a + 1, b):
             if 1 <= x <= max_pos:
                 pass_counts[x] += v
@@ -208,8 +253,8 @@ def analyze(data: dict[str, Any], max_pos: int = 100) -> Result:
     current_best = data.get("currentBest", -1)
     new_bests = data.get("newBests", [])
 
-    runs = _merge_current_best(runs, current_best)
-    death_map = _build_death_map(deaths_raw, runs)
+    runs = _merge_current_best(runs, deaths_raw, current_best)
+    death_map = _build_death_map(runs)
     total_deaths = sum(death_map.values())
     furthest_from = _build_furthest_from(runs)
     min_runs, optimal_path, range_start, range_end, is_full_path = _find_optimal_path(furthest_from, max_pos)
@@ -312,9 +357,8 @@ def print_report(result: Result) -> None:
     print("─" * 56)
     print("  最难过渡段 (Top 15, 按死亡数)")
     print("─" * 56)
-    for k, v in r['top_runs'][:15]:
-        a, b = k.split("-")
-        a, b = int(a), int(b)
+    for run, v in r['top_runs'][:15]:
+        a, b = run.start, run.end
         a_pct = a / r['max_pos'] * 100
         b_pct = b / r['max_pos'] * 100
         print(f"    {a:3d}%→{b:3d}% ({a_pct:5.1f}%→{b_pct:5.1f}%): {v:4d} 次")
