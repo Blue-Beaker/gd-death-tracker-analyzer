@@ -11,7 +11,7 @@ import sys
 import os
 from datetime import datetime
 
-from gd_analysis import load_data, analyze, print_report
+from gd_analysis import load_data, load_metadata, analyze, print_report
 from gd_plotting import plot_pass_rate, plot_optimal_path, plot_combined
 
 
@@ -25,13 +25,19 @@ def _session_timestamp(path: str) -> str:
         return basename
 
 
+def _safe_name(name: str) -> str:
+    """将关卡名转为安全的文件名片段"""
+    return "".join(c if c.isalnum() or c in "-_ " else "_" for c in name).strip() or "level"
+
+
 def process_file(path: str, out_dir: str = ".") -> None:
     """分析单个 .dt 文件并生成图表到 out_dir"""
     os.makedirs(out_dir, exist_ok=True)
 
     data = load_data(path)
+    level_info = load_metadata(path)
     result = analyze(data)
-    print_report(result)
+    print_report(result, level_info)
 
     # 判断是否为 session 文件（文件名是纯数字时间戳）
     basename = os.path.splitext(os.path.basename(path))[0]
@@ -42,16 +48,29 @@ def process_file(path: str, out_dir: str = ".") -> None:
     except ValueError:
         pass
 
+    # 关卡名前缀
+    level_name = level_info.get("level_name", "")
+    level_id = level_info.get("level_id", "")
+    if level_name:
+        level_prefix = f"{_safe_name(level_name)}"
+    elif level_id:
+        level_prefix = f"level_{level_id}"
+    else:
+        level_prefix = ""
+
     if is_session:
         date_str = _session_timestamp(path)
         prefix = f"session_{date_str}"
-        rate_name = f"{prefix}_pass_rate.png"
-        path_name = f"{prefix}_optimal_path.png"
-        combined_name = f"{prefix}_pass_combined.png"
     else:
-        rate_name = "pass_rate.png"
-        path_name = "optimal_path.png"
-        combined_name = "pass_combined.png"
+        prefix = ""
+
+    def _fname(kind: str) -> str:
+        parts = [p for p in (level_prefix, prefix, kind) if p]
+        return "_".join(parts) + ".png"
+
+    rate_name = _fname("pass_rate")
+    path_name = _fname("optimal_path")
+    combined_name = _fname("pass_combined")
 
     has_full_path = result["is_full_path"]
     has_any_path = bool(result["optimal_path"])

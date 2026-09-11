@@ -4,6 +4,7 @@
 """
 
 import json
+import os
 from collections import defaultdict
 from typing import Any, Optional
 
@@ -70,6 +71,30 @@ def load_data(path: str = "general.dt") -> dict[str, Any]:
     if "deaths" in data:
         data["deaths"] = {Death.from_key(k): v for k, v in data["deaths"].items()}
     return data
+
+
+def load_metadata(data_path: str) -> dict[str, Any]:
+    """读取数据文件同目录下的 metadata，获取关卡 id 和关名
+
+    session 文件位于 <level_dir>/sessions/ 下，metadata 在父目录。
+    general.dt 直接位于 <level_dir>/ 下。
+    """
+    data_dir = os.path.dirname(os.path.realpath(data_path))
+    # 若数据在 sessions 子目录，则 metadata 在父目录
+    level_dir = os.path.dirname(data_dir) if os.path.basename(data_dir) == "sessions" else data_dir
+
+    meta_path = os.path.join(level_dir, "metadata")
+    level_id = ""
+    level_name = ""
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path) as f:
+                meta = json.load(f)
+            level_name = meta.get("levelName", "")
+            level_id = os.path.basename(level_dir)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return {"level_id": level_id, "level_name": level_name}
 
 
 # ── 核心分析 ──────────────────────────────────────────────────
@@ -295,10 +320,19 @@ def analyze(data: dict[str, Any], max_pos: int = 100) -> Result:
 
 # ── 格式化输出 ──────────────────────────────────────────────────
 
-def print_report(result: Result) -> None:
+def print_report(result: Result, level_info: Optional[dict[str, Any]] = None) -> None:
     r = result
+    level_info = level_info or {}
+    level_name = level_info.get("level_name", "")
+    level_id = level_info.get("level_id", "")
+
     print("=" * 56)
     print("  GD Death Tracker 数据分析报告")
+    if level_name or level_id:
+        title = level_name or "(未命名关卡)"
+        if level_id:
+            title += f"  [{level_id}]"
+        print(f"  关卡: {title}")
     print("=" * 56)
     print(f"  关卡长度:          0–{r['max_pos']}%")
     print(f"  当前最佳 (正常模式): {r['current_best']}%")
